@@ -1,25 +1,27 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(CharacterController))]
+[RequireComponent(typeof(Animator))]
 public class AnimationAndMovementController : MonoBehaviour
 {
-    PlayerInput playerInput;
-    CharacterController characterController;
-    Animator animator;
+    private PlayerInput playerInput;
+    private CharacterController characterController;
+    private Animator animator;
 
-    [SerializeField] Transform cameraTransform;
+    [SerializeField] private Transform cameraTransform;
 
-    Vector2 currentMovementInput;
-    Vector3 currentMovement;
-    Vector3 currentRunMovement;
+    [Header("Movement")]
+    [SerializeField] private float walkSpeed = 2.5f;
+    [SerializeField] private float runMultiplier = 2.5f;
+    [SerializeField] private float gravity = -9.81f;
 
-    bool isMovementPressed;
-    bool isRunPressed;
+    [Header("Mouse")]
+    [SerializeField] private float sensX = 3f;
 
-    float rotationFactorPerFrame = 10f;
-    float runMultiplier = 3f;
-    float gravity = -9.81f;
-    float verticalVelocity;
+    private Vector2 moveInput;
+    private bool isRunPressed;
+    private float verticalVelocity;
 
     void Awake()
     {
@@ -27,12 +29,12 @@ public class AnimationAndMovementController : MonoBehaviour
         characterController = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
 
-        playerInput.CharacterControls.Move.started += onMovementInput;
-        playerInput.CharacterControls.Move.performed += onMovementInput;
-        playerInput.CharacterControls.Move.canceled += onMovementInput;
+        // SOLO per Run (digitale → sicuro)
+        playerInput.CharacterControls.Run.started += _ => isRunPressed = true;
+        playerInput.CharacterControls.Run.canceled += _ => isRunPressed = false;
 
-        playerInput.CharacterControls.Run.started += ctx => isRunPressed = true;
-        playerInput.CharacterControls.Run.canceled += ctx => isRunPressed = false;
+        // SICUREZZA ASSOLUTA
+        animator.applyRootMotion = false;
     }
 
     void Start()
@@ -41,82 +43,74 @@ public class AnimationAndMovementController : MonoBehaviour
             cameraTransform = Camera.main.transform;
     }
 
-    void onMovementInput(InputAction.CallbackContext context)
-    {
-        currentMovementInput = context.ReadValue<Vector2>();
-        isMovementPressed = currentMovementInput.sqrMagnitude > 0;
-
-        Vector3 forward = cameraTransform.forward;
-        Vector3 right = cameraTransform.right;
-
-        forward.y = 0;
-        right.y = 0;
-
-        forward.Normalize();
-        right.Normalize();
-
-        Vector3 direction = forward * currentMovementInput.y + right * currentMovementInput.x;
-
-        currentMovement.x = direction.x;
-        currentMovement.z = direction.z;
-
-        currentRunMovement.x = direction.x * runMultiplier;
-        currentRunMovement.z = direction.z * runMultiplier;
-    }
-
-    void handleRotation()
-    {
-        if (!isMovementPressed) return;
-
-        Vector3 forward = cameraTransform.forward;
-        Vector3 right = cameraTransform.right;
-
-        forward.y = 0;
-        right.y = 0;
-
-        forward.Normalize();
-        right.Normalize();
-
-        Vector3 moveDirection = forward * currentMovementInput.y + right * currentMovementInput.x;
-
-        if (moveDirection.sqrMagnitude > 0.01f)
-        {
-            Quaternion targetRotation = Quaternion.LookRotation(moveDirection.normalized);
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                targetRotation,
-                rotationFactorPerFrame * Time.deltaTime
-            );
-        }
-    }
-
-    void handleGravity()
-    {
-        if (characterController.isGrounded)
-            verticalVelocity = -2f;
-        else
-            verticalVelocity += gravity * Time.deltaTime;
-
-        currentMovement.y = verticalVelocity;
-        currentRunMovement.y = verticalVelocity;
-    }
-
-    void handleAnimation()
-    {
-        animator.SetBool("isWalking", isMovementPressed);
-        animator.SetBool("isRunning", isRunPressed && isMovementPressed);
-    }
-
     void Update()
     {
-        handleGravity();
-        handleRotation();
-        handleAnimation();
+        ReadMovementInput();
+        HandleYawRotation();
+        HandleGravity();
+        HandleMovement();
+        HandleAnimation();
+    }
 
-        if (isRunPressed)
-            characterController.Move(currentRunMovement * Time.deltaTime);
+    // 🔒 INPUT: POLLING ONLY
+    void ReadMovementInput()
+    {
+        moveInput = playerInput.CharacterControls.Move.ReadValue<Vector2>();
+        // Quando rilasci WASD → moveInput == Vector2.zero
+    }
+
+    void HandleYawRotation()
+    {
+        Vector2 mouseDelta = Mouse.current.delta.ReadValue();
+        transform.Rotate(Vector3.up, mouseDelta.x * sensX);
+    }
+
+    void HandleMovement()
+    {
+        Vector3 forward = cameraTransform.forward;
+        Vector3 right = cameraTransform.right;
+
+        forward.y = 0f;
+        right.y = 0f;
+
+        forward.Normalize();
+        right.Normalize();
+
+        Vector3 moveDirection =
+            forward * moveInput.y +
+            right * moveInput.x;
+
+        if (moveDirection.sqrMagnitude > 1f)
+            moveDirection.Normalize();
+
+        float speed = walkSpeed;
+        if (isRunPressed && moveDirection.sqrMagnitude > 0f)
+            speed *= runMultiplier;
+
+        Vector3 velocity = moveDirection * speed;
+        velocity.y = verticalVelocity;
+
+        characterController.Move(velocity * Time.deltaTime);
+    }
+
+    void HandleGravity()
+    {
+        if (characterController.isGrounded)
+            verticalVelocity = -0.5f;
         else
-            characterController.Move(currentMovement * Time.deltaTime);
+            verticalVelocity += gravity * Time.deltaTime;
+    }
+
+    void HandleAnimation()
+    {
+        float horizontalSpeed = new Vector3(
+            characterController.velocity.x,
+            0f,
+            characterController.velocity.z
+        ).magnitude;
+
+        animator.SetFloat("Speed", horizontalSpeed);
+        animator.SetBool("IsRunning", isRunPressed && horizontalSpeed > 0.1f);
     }
 
     void OnEnable()
@@ -128,4 +122,7 @@ public class AnimationAndMovementController : MonoBehaviour
     {
         playerInput.CharacterControls.Disable();
     }
+
+    // 🔒 BLOCCO ROOT MOTION A RUNTIME (ULTIMA LINEA DI DIFESA)
+    void OnAnimatorMove() { }
 }
