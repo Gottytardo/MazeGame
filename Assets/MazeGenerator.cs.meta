@@ -5,6 +5,9 @@ MonoImporter:
   serializedVersion: 2
   defaultReferences:
   - _mazeCellPrefab: {fileID: 2284534489432684337, guid: 1110edd1a23b41241a4ab81de060f1c3, type: 3}
+  - _startPrefab: {fileID: 1529021123567257499, guid: 1110edd1a23b41241a4ab81de060f1c3, type: 3}
+  - _endPrefab: {fileID: 1529021123567257499, guid: 1110edd1a23b41241a4ab81de060f1c3, type: 3}
+  - _player: {fileID: 2250597674711203916, guid: b43d0309510c95c4786e9534d5a403b5, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 
